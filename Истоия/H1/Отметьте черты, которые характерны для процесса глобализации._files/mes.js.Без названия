@@ -1,0 +1,298 @@
+﻿String.prototype.splice = function (idx, rem, str) {
+    return this.slice(0, idx) + str + this.slice(idx + Math.abs(rem));
+};
+
+jQuery.fn.outerHTML = function () {
+    return jQuery('<div />').append(this.eq(0).clone()).html();
+};
+
+function createElementFromHTML(htmlString) {
+    const div = document.createElement('div');
+    div.innerHTML = htmlString.trim();
+    return div.firstChild;
+}
+
+function parseTextElement(element, highlighted = false) {
+    let offset = 0
+    let el;
+    if (highlighted) {
+        el = $('<p style="white-space: inherit" class="answer__exercise mb-16">');
+    } else {
+        el = $('<p style="white-space: inherit" class="answer__exercise mb-16">');
+    }
+    let text = element['text']
+    element["content"].forEach(content => {
+        if (content["type"] === "content/math") {
+            let formula = `$${content["content"]}$ `
+            text = text.splice(content["position"] + offset, 0, formula)
+            offset += formula.length
+        }
+    })
+    el.html(text)
+    return el;
+}
+
+function parseElement(element) {
+    if (element["type"] === "content/text") {
+        return parseTextElement(element)
+    }
+    if (element["type"] === "content/atomic") {
+        if (element["atomic_type"] === "image") {
+            if (element["relative_url"].includes("uchebnik.mos.ru")) {
+                return $(`<img src="${element["relative_url"]}" class="answer__img" data-fancybox="answer-img">`)
+            } else {
+                return $(`<img src="https://uchebnik.mos.ru${element["relative_url"]}" class="answer__img" data-fancybox="answer-img">`)
+            }
+        }
+    }
+    if (element["type"] === "content/file") {
+        if (element["file"]["type"] === "file/image") {
+            return $(`<img src="https://uchebnik.mos.ru/exam${element["file"]["relative_url"]}">`)
+        }
+    }
+}
+
+function parseOption(option, checked = false, highlighted = false) {
+    let option_el = $('<div class="answer__text mb-16" style="display:flex">')
+    option_el.append(parseTextElement(option, highlighted))
+    option["content"].forEach(content => {
+        option_el.append(parseElement(content))
+    })
+
+    return option_el
+}
+
+function parseAnswers(task) {
+    let j;
+    let i;
+    let answer = task["answer"]
+    let html = ""
+    let answer_el = $('<div class="answer__text mb-16">')
+    answer_el.html("Ответ: ")
+
+    let right_answer_id;
+    if (answer["type"] === "answer/single") {
+        right_answer_id = answer["right_answer"]["id"]
+        answer["options"].forEach(option => {
+            if (option["id"] === right_answer_id) {
+                answer_el.append(parseOption(option, true, true))
+            }
+        })
+        return answer_el
+    }
+    if (answer["type"] === "answer/multiple") {
+        let right_answer_ids = answer["right_answer"]["ids"]
+        answer["options"].forEach(option => {
+            if (right_answer_ids.includes(option["id"])) {
+                answer_el.append(parseOption(option, true, true))
+            }
+        })
+        return answer_el
+    }
+    if (answer["type"] === "answer/number") {
+        answer_el.append($(`<a>${answer["right_answer"]["number"]}</a>`))
+        return answer_el
+    }
+    if (answer["type"] === "answer/string") {
+        answer_el.append($(`<a>${answer["right_answer"]["string"]}</a>`))
+        return answer_el
+    }
+    let cosy;
+    if (answer["type"] === "answer/order") {
+        cosy = {}
+        answer["options"].forEach(i => {
+            cosy[i["id"]] = i
+        })
+        for (i = 0; i < answer["right_answer"]["ids_order"].length; i++) {
+            answer_el.append(parseOption(cosy[answer["right_answer"]["ids_order"][i]]))
+        }
+        return answer_el
+    }
+    let options
+    let answers;
+    let ans;
+    if (answer["type"] === "answer/match") {
+        options = {}
+        answer["options"].forEach(option => {
+            options[option["id"]] = option
+        })
+        answers = answer["right_answer"]["match"]
+        ans = []
+        Object.entries(answers).forEach(answer => {
+            let line = $("<tr>")
+            line.append($("<td>").append(parseOption(options[answer[0]])))
+            line.append($("<td>").append(parseOption(options[answer[1][0]])))
+            answer_el.append(line)
+        })
+        return answer_el
+    }
+    if (answer["type"] === "answer/groups") {
+        options = {}
+        answer["options"].forEach(option => {
+            options[option["id"]] = option
+        })
+        answers = {}
+        answer["right_answer"]["groups"].forEach(group => {
+            let line;
+            for (i = 0; i < group["options_ids"].length; i++) {
+                line = $("<tr>")
+                if (i == 0) {
+                    line.append($("<td>").append(parseOption(options[group["group_id"]])))
+                    line.append($("<td>").append(parseOption(options[group["options_ids"][i]])))
+                } else {
+                    line.append($("<td>"))
+                    line.append($("<td>").append(parseOption(options[group["options_ids"][i]])))
+                }
+                answer_el.append(line)
+            }
+        })
+        return answer_el
+    }
+    let texts;
+    let text_positions;
+    if (answer["type"] === "answer/gap/match/text") {
+        texts = {}
+        task['question_elements'].forEach((element) => {
+            if (element["type"] == 'content/text/identificational') {
+                texts[element['text_id']] = [element['text'], 0]
+            }
+        })
+        options = {}
+        answer["options"].forEach(option => {
+            options[option["id"]] = option
+        })
+
+        text_positions = {}
+        answer["text_position"].forEach(option => {
+            text_positions[option["position_id"]] = option
+        })
+
+        answer["right_answer"]["text_position_answer"]
+            .sort((a, b) => text_positions[a['position_id']]['position'] - text_positions[b['position_id']]['position'])
+            .forEach(position => {
+
+                let t = `<a>${options[position['id']]['text']}</a>`
+                texts[position['text_id']][0] = texts[position['text_id']][0].splice(
+                    text_positions[position['position_id']]['position'] + texts[position['text_id']][1],
+                    0,
+                    t
+                )
+                texts[position['text_id']][1] += t.length
+
+            })
+        $.each(texts, (i, v) => {
+            let e = $("<p>").html(v[0])
+            answer_el.append(e)
+        })
+        return answer_el
+    }
+    if (answer['type'] === 'answer/inline/choice/single') {
+        texts = {}
+        task['question_elements'].forEach((element) => {
+            if (element["type"] === 'content/text/identificational') {
+                texts[element['text_id']] = [element['text'], 0]
+            }
+        })
+
+        options = {}
+
+        text_positions = {}
+        answer["text_position"].forEach(position => {
+            text_positions[position["position_id"]] = position;
+            position['options'].forEach(option => {
+                options[option['id']] = option
+            })
+        })
+
+        answer["right_answer"]["text_position_answer"]
+            .sort((a, b) => text_positions[a['position_id']]['position'] - text_positions[b['position_id']]['position'])
+            .forEach(position => {
+
+                let t = `<a>${options[position['id']]['text']}</a>`
+                texts[position['text_id']][0] = texts[position['text_id']][0].splice(
+                    text_positions[position['position_id']]['position'] + texts[position['text_id']][1],
+                    0,
+                    t
+                )
+                texts[position['text_id']][1] += t.length
+            })
+        $.each(texts, (i, v) => {
+            let e = $("<p>").html(v[0])
+            answer_el.append(e)
+        })
+        return answer_el
+
+    }
+    let table;
+    let line;
+    if (answer["type"] === "answer/table") {
+        table = []
+        answer["options"].forEach(option => {
+            if (option['type'] === 'option_type/table') {
+                option['content'].forEach(content => {
+                    if (content['type'] === 'content/table') {
+                        for (var i in content['table']['cells']) {
+                            if (table[i] == null) {
+                                table[i] = []
+                            }
+                            for (var j in content['table']['cells'][i]) {
+                                table[i][j] = content['table']['cells'][i][j]
+                            }
+                        }
+                    }
+                })
+            }
+        })
+        for (i in answer['right_answer']['cells']) {
+            if (table[i] == null) {
+                table[i] = []
+            }
+            for (j in answer['right_answer']['cells'][i]) {
+                table[i][j] = answer['right_answer']['cells'][i][j]
+            }
+        }
+        for (i = 0; i < table.length; i++) {
+            line = $("<tr>")
+            for (j = 0; j < table[i].length; j++) {
+                line.append($("<td>").append(table[i][j]))
+            }
+            answer_el.append(line)
+        }
+        return answer_el;
+    }
+    return answer["type"]
+}
+
+function renderTask(task) {
+    let task_el = $('<div class="container answer" style="white-space: pre-line">');
+    let question_el = $('<div class="question__title mb-16">');
+    task["question_elements"].forEach(question_element => {
+        let el = parseElement(question_element);
+        question_el.append(el);
+    })
+    task_el.append(question_el)
+    task_el.append(parseAnswers(task))
+    $('#content').append(task_el)
+}
+
+
+data.forEach((task, i) => {
+ try {
+    renderTask(task, i);
+}catch (err) {
+
+  // обработка ошибки
+
+}
+})
+
+$(document).ready(() => {
+    renderMathInElement(
+        document.body,
+        {
+            delimiters: [{left: "$", right: "$", display: false}],
+            throwOnError: false
+        }
+    )
+})
+
